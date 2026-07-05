@@ -5,7 +5,7 @@ pipeline {
         stage('Read Deployment Manifest') {
             steps {
                 script {
-                    manifest = readJSON file: 'deployment-manifest.json'
+                    manifest = readJSON file: 'deploymentmanifest.json'
                     echo "Target Environment ID: ${manifest.environmentId}"
                     echo "Processes to deploy: ${manifest.processes.size()}"
                 }
