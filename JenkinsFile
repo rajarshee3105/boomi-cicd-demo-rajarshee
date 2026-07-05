@@ -1,3 +1,5 @@
+import groovy.json.JsonSlurperClassic
+
 pipeline {
     agent any
 
@@ -5,25 +7,25 @@ pipeline {
         stage('Read Deployment Manifest') {
             steps {
                 script {
-                    manifest = readJSON file: 'deploymentmanifest.json'
-                    echo "Target Environment ID: ${manifest.environmentId}"
-                    echo "Processes to deploy: ${manifest.processes.size()}"
+                    def jsonText = readFile('deployment-manifest.json')
+                    env.MANIFEST_TEXT = jsonText
                 }
             }
         }
 
-        stage('Package and Deploy Boomi Processes') {
+        stage('Package and Deploy Components') {
             steps {
                 script {
-                    manifest.processes.each { process ->
+                    def manifest = new JsonSlurperClassic().parseText(env.MANIFEST_TEXT)
 
-                        def componentId = process.componentId
-                        def componentType = process.componentType ?: 'process'
-                        def packageVersion = process.packageVersion.replace('${BUILD_NUMBER}', "${BUILD_NUMBER}")
-                        def packageNotes = "Packaged and deployed from Jenkins build ${BUILD_NUMBER} for ${process.name}"
+                    manifest.processes.each { item ->
+                        def componentId = item.componentId
+                        def componentType = item.componentType
+                        def packageVersion = item.packageVersion
+                        def packageNotes = "Packaged and deployed from Jenkins build ${BUILD_NUMBER} for ${item.name}"
 
-                        echo "Packaging process: ${process.name}"
-                        echo "Component ID: ${componentId}"
+                        echo "Packaging: ${item.name}"
+                        echo "Component Type: ${componentType}"
 
                         withCredentials([
                             string(credentialsId: 'BOOMI_ACCOUNT_ID', variable: 'BOOMI_ACCOUNT_ID'),
@@ -31,7 +33,7 @@ pipeline {
                             string(credentialsId: 'BOOMI_API_TOKEN', variable: 'BOOMI_API_TOKEN')
                         ]) {
                             bat """
-                            curl --ssl-no-revoke --fail -X POST ^
+                            curl --ssl-no-revoke --fail --max-time 120 -X POST ^
                               -u "%BOOMI_USERNAME%:%BOOMI_API_TOKEN%" ^
                               -H "Content-Type: application/json" ^
                               -H "Accept: application/json" ^
@@ -41,19 +43,19 @@ pipeline {
                             """
                         }
 
-                        def response = readFile('package-response.json')
-                        echo response
+                        def packageResponseText = readFile('package-response.json')
+                        echo packageResponseText
 
-                        def matcher = response =~ /"packageId"\s*:\s*"([^"]+)"/
+                        def packageResponse = new JsonSlurperClassic().parseText(packageResponseText)
+                        def packageId = packageResponse.packageId
 
-                        if (!matcher.find()) {
-                            error "Could not find packageId for ${process.name}"
+                        if (!packageId) {
+                            error "Package ID not found for ${item.name}"
                         }
 
-                        def newPackageId = matcher.group(1)
-                        echo "New Package ID for ${process.name}: ${newPackageId}"
+                        echo "Package created for ${item.name}: ${packageId}"
 
-                        echo "Deploying process: ${process.name}"
+                        echo "Deploying: ${item.name}"
 
                         withCredentials([
                             string(credentialsId: 'BOOMI_ACCOUNT_ID', variable: 'BOOMI_ACCOUNT_ID'),
@@ -61,14 +63,20 @@ pipeline {
                             string(credentialsId: 'BOOMI_API_TOKEN', variable: 'BOOMI_API_TOKEN')
                         ]) {
                             bat """
-                            curl --ssl-no-revoke --fail -X POST ^
+                            curl --ssl-no-revoke --fail --max-time 120 -X POST ^
                               -u "%BOOMI_USERNAME%:%BOOMI_API_TOKEN%" ^
                               -H "Content-Type: application/json" ^
                               -H "Accept: application/json" ^
-                              -d "{\\"packageId\\":\\"${newPackageId}\\",\\"environmentId\\":\\"${manifest.environmentId}\\",\\"notes\\":\\"${packageNotes}\\"}" ^
-                              "https://api.boomi.com/api/rest/v1/%BOOMI_ACCOUNT_ID%/DeployedPackage"
+                              -d "{\\"packageId\\":\\"${packageId}\\",\\"environmentId\\":\\"${manifest.environmentId}\\",\\"notes\\":\\"${packageNotes}\\"}" ^
+                              "https://api.boomi.com/api/rest/v1/%BOOMI_ACCOUNT_ID%/DeployedPackage" ^
+                              -o deploy-response.json
                             """
                         }
+
+                        def deployResponse = readFile('deploy-response.json')
+                        echo deployResponse
+
+                        echo "Deployment completed for ${item.name}"
                     }
                 }
             }
@@ -77,7 +85,7 @@ pipeline {
 
     post {
         success {
-            echo "All Boomi processes packaged and deployed successfully."
+            echo "All listed Boomi components packaged and deployed successfully."
         }
         failure {
             echo "Boomi package/deployment failed. Check console output."
