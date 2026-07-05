@@ -18,18 +18,29 @@ pipeline {
                     manifest.processes.each { item ->
                         def componentId = item.componentId
                         def componentType = item.componentType
-                        def packageVersion = item.packageVersion
                         def packageNotes = "Packaged and deployed from Jenkins build ${BUILD_NUMBER} for ${item.name}"
 
                         if (componentType == "API Service") {
                             componentType = "webservice"
                         }
 
-                      def packageVersionJson = packageVersion ?"\\"packageVersion\\":\\"${packageVersion}\\"," :""
-
                         echo "Packaging: ${item.name}"
                         echo "Component Type: ${componentType}"
-                        echo "Package Version: ${packageVersion}"
+
+                        def packageRequest = [
+                            componentId  : componentId,
+                            componentType: componentType,
+                            notes        : packageNotes
+                        ]
+
+                        if (item.packageVersion) {
+                            packageRequest.packageVersion = item.packageVersion
+                            echo "Package Version: ${item.packageVersion}"
+                        } else {
+                            echo "Package Version: auto"
+                        }
+
+                        writeJSON file: 'package-request.json', json: packageRequest
 
                         withCredentials([
                             string(credentialsId: 'BOOMI_ACCOUNT_ID', variable: 'BOOMI_ACCOUNT_ID'),
@@ -39,11 +50,15 @@ pipeline {
                             bat """
 @echo off
 
+echo ===== Package API Request for ${item.name} =====
+type package-request.json
+
 curl --ssl-no-revoke --fail-with-body --max-time 120 -X POST ^
   -u "%BOOMI_USERNAME%:%BOOMI_API_TOKEN%" ^
   -H "Content-Type: application/json" ^
   -H "Accept: application/json" ^
-  -d "{\\"componentId\\":\\"${componentId}\\",\\"componentType\\":\\"${componentType}\\",${packageVersionJson}\\"notes\\":\\"${packageNotes}\\"}" ^
+  -d @package-request.json ^
+  "https://api.boomi.com/api/rest/v1/%BOOMI_ACCOUNT_ID%/PackagedComponent" ^
   -o package-response.json
 
 set CURL_EXIT=%ERRORLEVEL%
@@ -66,6 +81,14 @@ exit /b %CURL_EXIT%
                         echo "Package created for ${item.name}: ${packageId}"
                         echo "Deploying: ${item.name}"
 
+                        def deployRequest = [
+                            packageId    : packageId,
+                            environmentId: manifest.environmentId,
+                            notes        : packageNotes
+                        ]
+
+                        writeJSON file: 'deploy-request.json', json: deployRequest
+
                         withCredentials([
                             string(credentialsId: 'BOOMI_ACCOUNT_ID', variable: 'BOOMI_ACCOUNT_ID'),
                             string(credentialsId: 'BOOMI_USERNAME', variable: 'BOOMI_USERNAME'),
@@ -74,11 +97,14 @@ exit /b %CURL_EXIT%
                             bat """
 @echo off
 
+echo ===== Deploy API Request for ${item.name} =====
+type deploy-request.json
+
 curl --ssl-no-revoke --fail-with-body --max-time 120 -X POST ^
   -u "%BOOMI_USERNAME%:%BOOMI_API_TOKEN%" ^
   -H "Content-Type: application/json" ^
   -H "Accept: application/json" ^
-  -d "{\\"packageId\\":\\"${packageId}\\",\\"environmentId\\":\\"${manifest.environmentId}\\",\\"notes\\":\\"${packageNotes}\\"}" ^
+  -d @deploy-request.json ^
   "https://api.boomi.com/api/rest/v1/%BOOMI_ACCOUNT_ID%/DeployedPackage" ^
   -o deploy-response.json
 
