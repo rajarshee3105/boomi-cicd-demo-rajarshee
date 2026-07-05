@@ -25,9 +25,7 @@ pipeline {
                             componentType = "webservice"
                         }
 
-                        if (!packageVersion || packageVersion == "null") {
-                            error "packageVersion is missing for ${item.name}"
-                        }
+                      def packageVersionJson = packageVersion ?"\\"packageVersion\\":\\"${packageVersion}\\"," :""
 
                         echo "Packaging: ${item.name}"
                         echo "Component Type: ${componentType}"
@@ -45,8 +43,7 @@ curl --ssl-no-revoke --fail-with-body --max-time 120 -X POST ^
   -u "%BOOMI_USERNAME%:%BOOMI_API_TOKEN%" ^
   -H "Content-Type: application/json" ^
   -H "Accept: application/json" ^
-  -d "{\\"componentId\\":\\"${componentId}\\",\\"componentType\\":\\"${componentType}\\",\\"packageVersion\\":\\"${packageVersion}\\",\\"notes\\":\\"${packageNotes}\\"}" ^
-  "https://api.boomi.com/api/rest/v1/%BOOMI_ACCOUNT_ID%/PackagedComponent" ^
+  -d "{\\"componentId\\":\\"${componentId}\\",\\"componentType\\":\\"${componentType}\\",${packageVersionJson}\\"notes\\":\\"${packageNotes}\\"}" ^
   -o package-response.json
 
 set CURL_EXIT=%ERRORLEVEL%
