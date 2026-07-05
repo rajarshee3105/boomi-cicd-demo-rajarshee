@@ -1,0 +1,18 @@
+{
+  "releaseName": "Boomi Test Release 1.0.1",
+  "environmentId": "18d5a71d-5ce1-495a-9b8a-d6621884079d",
+  "processes": [
+    {
+      "name": "Customer Sync",
+      "componentId": "66a30c40-ff99-45c0-b82f-65b7a92e9f1f",
+      "componentType": "process",
+      "packageVersion": "1.0.1"
+    },
+    {
+      "name": "API AirportOperations",
+      "componentId": "b09c8eb0-328b-4f66-b3cd-1ba50b48fa90",
+      "componentType": "api",
+      "packageVersion": "1.0.1"
+    }
+  ]
+}
