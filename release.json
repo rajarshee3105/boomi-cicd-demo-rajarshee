@@ -1,0 +1,8 @@
+{
+  "releaseName": "Boomi Customer Sync Release",
+  "componentId": "66a30c40-ff99-45c0-b82f-65b7a92e9f1f",
+  "componentType": "process",
+  "environmentId": "18d5a71d-5ce1-495a-9b8a-d6621884079d",
+  "packageVersion": "1.0.1",
+  "notes": "Deploy Customer Sync process to BoomiCloudTest"
+}
