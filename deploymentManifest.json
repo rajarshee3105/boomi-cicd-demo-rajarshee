@@ -13,6 +13,11 @@
       "componentId": "b09c8eb0-328b-4f66-b3cd-1ba50b48fa90",
       "componentType": "API Service",
       "packageVersion": "1.0.2"
+    },
+	{
+      "name": "Listen For AX File Ingestion",
+      "componentId": "7fb94926-2613-47ab-b6ee-fa077ae23f76",
+      "componentType": "process"
     }
   ]
 }
