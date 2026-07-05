@@ -1,68 +1,75 @@
 pipeline {
     agent any
 
-    environment {
-        COMPONENT_ID = '66a30c40-ff99-45c0-b82f-65b7a92e9f1f'
-        COMPONENT_TYPE = 'process'
-        ENVIRONMENT_ID = '18d5a71d-5ce1-495a-9b8a-d6621884079d'
-        PACKAGE_VERSION = "jenkins-${BUILD_NUMBER}"
-        PACKAGE_NOTES = "Packaged and deployed from Jenkins build ${BUILD_NUMBER}"
-    }
-
     stages {
-        stage('Create Boomi Package') {
-            steps {
-                withCredentials([
-                    string(credentialsId: 'BOOMI_ACCOUNT_ID', variable: 'BOOMI_ACCOUNT_ID'),
-                    string(credentialsId: 'BOOMI_USERNAME', variable: 'BOOMI_USERNAME'),
-                    string(credentialsId: 'BOOMI_API_TOKEN', variable: 'BOOMI_API_TOKEN')
-                ]) {
-                    bat '''
-                    curl --ssl-no-revoke --fail -X POST ^
-                      -u "%BOOMI_USERNAME%:%BOOMI_API_TOKEN%" ^
-                      -H "Content-Type: application/json" ^
-                      -H "Accept: application/json" ^
-                      -d "{\\"componentId\\":\\"%COMPONENT_ID%\\",\\"componentType\\":\\"%COMPONENT_TYPE%\\",\\"packageVersion\\":\\"%PACKAGE_VERSION%\\",\\"notes\\":\\"%PACKAGE_NOTES%\\"}" ^
-                      "https://api.boomi.com/api/rest/v1/%BOOMI_ACCOUNT_ID%/PackagedComponent" ^
-                      -o package-response.json
-                    '''
-                }
-            }
-        }
-
-        stage('Read Package ID') {
+        stage('Read Deployment Manifest') {
             steps {
                 script {
-                    def response = readFile('package-response.json')
-                    echo response
-
-                    def matcher = response =~ /"packageId"\s*:\s*"([^"]+)"/
-
-                    if (!matcher.find()) {
-                        error "Could not find packageId in Boomi response."
-                    }
-
-                    env.NEW_PACKAGE_ID = matcher.group(1)
-                    echo "New Package ID: ${env.NEW_PACKAGE_ID}"
+                    manifest = readJSON file: 'deployment-manifest.json'
+                    echo "Target Environment ID: ${manifest.environmentId}"
+                    echo "Processes to deploy: ${manifest.processes.size()}"
                 }
             }
         }
 
-        stage('Deploy Package') {
+        stage('Package and Deploy Boomi Processes') {
             steps {
-                withCredentials([
-                    string(credentialsId: 'BOOMI_ACCOUNT_ID', variable: 'BOOMI_ACCOUNT_ID'),
-                    string(credentialsId: 'BOOMI_USERNAME', variable: 'BOOMI_USERNAME'),
-                    string(credentialsId: 'BOOMI_API_TOKEN', variable: 'BOOMI_API_TOKEN')
-                ]) {
-                    bat '''
-                    curl --ssl-no-revoke --fail -X POST ^
-                      -u "%BOOMI_USERNAME%:%BOOMI_API_TOKEN%" ^
-                      -H "Content-Type: application/json" ^
-                      -H "Accept: application/json" ^
-                      -d "{\\"packageId\\":\\"%NEW_PACKAGE_ID%\\",\\"environmentId\\":\\"%ENVIRONMENT_ID%\\",\\"notes\\":\\"%PACKAGE_NOTES%\\"}" ^
-                      "https://api.boomi.com/api/rest/v1/%BOOMI_ACCOUNT_ID%/DeployedPackage"
-                    '''
+                script {
+                    manifest.processes.each { process ->
+
+                        def componentId = process.componentId
+                        def componentType = process.componentType ?: 'process'
+                        def packageVersion = process.packageVersion.replace('${BUILD_NUMBER}', "${BUILD_NUMBER}")
+                        def packageNotes = "Packaged and deployed from Jenkins build ${BUILD_NUMBER} for ${process.name}"
+
+                        echo "Packaging process: ${process.name}"
+                        echo "Component ID: ${componentId}"
+
+                        withCredentials([
+                            string(credentialsId: 'BOOMI_ACCOUNT_ID', variable: 'BOOMI_ACCOUNT_ID'),
+                            string(credentialsId: 'BOOMI_USERNAME', variable: 'BOOMI_USERNAME'),
+                            string(credentialsId: 'BOOMI_API_TOKEN', variable: 'BOOMI_API_TOKEN')
+                        ]) {
+                            bat """
+                            curl --ssl-no-revoke --fail -X POST ^
+                              -u "%BOOMI_USERNAME%:%BOOMI_API_TOKEN%" ^
+                              -H "Content-Type: application/json" ^
+                              -H "Accept: application/json" ^
+                              -d "{\\"componentId\\":\\"${componentId}\\",\\"componentType\\":\\"${componentType}\\",\\"packageVersion\\":\\"${packageVersion}\\",\\"notes\\":\\"${packageNotes}\\"}" ^
+                              "https://api.boomi.com/api/rest/v1/%BOOMI_ACCOUNT_ID%/PackagedComponent" ^
+                              -o package-response.json
+                            """
+                        }
+
+                        def response = readFile('package-response.json')
+                        echo response
+
+                        def matcher = response =~ /"packageId"\s*:\s*"([^"]+)"/
+
+                        if (!matcher.find()) {
+                            error "Could not find packageId for ${process.name}"
+                        }
+
+                        def newPackageId = matcher.group(1)
+                        echo "New Package ID for ${process.name}: ${newPackageId}"
+
+                        echo "Deploying process: ${process.name}"
+
+                        withCredentials([
+                            string(credentialsId: 'BOOMI_ACCOUNT_ID', variable: 'BOOMI_ACCOUNT_ID'),
+                            string(credentialsId: 'BOOMI_USERNAME', variable: 'BOOMI_USERNAME'),
+                            string(credentialsId: 'BOOMI_API_TOKEN', variable: 'BOOMI_API_TOKEN')
+                        ]) {
+                            bat """
+                            curl --ssl-no-revoke --fail -X POST ^
+                              -u "%BOOMI_USERNAME%:%BOOMI_API_TOKEN%" ^
+                              -H "Content-Type: application/json" ^
+                              -H "Accept: application/json" ^
+                              -d "{\\"packageId\\":\\"${newPackageId}\\",\\"environmentId\\":\\"${manifest.environmentId}\\",\\"notes\\":\\"${packageNotes}\\"}" ^
+                              "https://api.boomi.com/api/rest/v1/%BOOMI_ACCOUNT_ID%/DeployedPackage"
+                            """
+                        }
+                    }
                 }
             }
         }
@@ -70,8 +77,7 @@ pipeline {
 
     post {
         success {
-            echo "Boomi package created and deployed successfully."
-            echo "Package ID: ${env.NEW_PACKAGE_ID}"
+            echo "All Boomi processes packaged and deployed successfully."
         }
         failure {
             echo "Boomi package/deployment failed. Check console output."
