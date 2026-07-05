@@ -6,13 +6,13 @@
       "name": "Sample BAC process",
       "componentId": "66a30c40-ff99-45c0-b82f-65b7a92e9f1f",
       "componentType": "process",
-      "packageVersion": "1.0.1"
+      "packageVersion": "1.0.2"
     },
     {
       "name": "API AirportOperations",
       "componentId": "b09c8eb0-328b-4f66-b3cd-1ba50b48fa90",
       "componentType": "API Service",
-      "packageVersion": "1.0.1"
+      "packageVersion": "1.0.2"
     }
   ]
 }
