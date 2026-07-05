@@ -1,5 +1,3 @@
-import groovy.json.JsonSlurperClassic
-
 pipeline {
     agent any
 
@@ -7,8 +5,7 @@ pipeline {
         stage('Read Deployment Manifest') {
             steps {
                 script {
-                    def jsonText = readFile('deploymentmanifest.json')
-                    env.MANIFEST_TEXT = jsonText
+                    env.MANIFEST_TEXT = readFile('deploymentmanifest.json')
                 }
             }
         }
@@ -16,7 +13,7 @@ pipeline {
         stage('Package and Deploy Components') {
             steps {
                 script {
-                    def manifest = new JsonSlurperClassic().parseText(env.MANIFEST_TEXT)
+                    def manifest = readJSON text: env.MANIFEST_TEXT
 
                     manifest.processes.each { item ->
                         def componentId = item.componentId
@@ -46,7 +43,7 @@ pipeline {
                         def packageResponseText = readFile('package-response.json')
                         echo packageResponseText
 
-                        def packageResponse = new JsonSlurperClassic().parseText(packageResponseText)
+                        def packageResponse = readJSON text: packageResponseText
                         def packageId = packageResponse.packageId
 
                         if (!packageId) {
@@ -54,7 +51,6 @@ pipeline {
                         }
 
                         echo "Package created for ${item.name}: ${packageId}"
-
                         echo "Deploying: ${item.name}"
 
                         withCredentials([
