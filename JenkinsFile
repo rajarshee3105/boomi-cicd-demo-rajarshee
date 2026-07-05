@@ -21,8 +21,17 @@ pipeline {
                         def packageVersion = item.packageVersion
                         def packageNotes = "Packaged and deployed from Jenkins build ${BUILD_NUMBER} for ${item.name}"
 
+                        if (componentType == "API Service") {
+                            componentType = "webservice"
+                        }
+
+                        if (!packageVersion || packageVersion == "null") {
+                            error "packageVersion is missing for ${item.name}"
+                        }
+
                         echo "Packaging: ${item.name}"
                         echo "Component Type: ${componentType}"
+                        echo "Package Version: ${packageVersion}"
 
                         withCredentials([
                             string(credentialsId: 'BOOMI_ACCOUNT_ID', variable: 'BOOMI_ACCOUNT_ID'),
@@ -30,19 +39,26 @@ pipeline {
                             string(credentialsId: 'BOOMI_API_TOKEN', variable: 'BOOMI_API_TOKEN')
                         ]) {
                             bat """
-                            curl --ssl-no-revoke --fail --max-time 120 -X POST ^
-                              -u "%BOOMI_USERNAME%:%BOOMI_API_TOKEN%" ^
-                              -H "Content-Type: application/json" ^
-                              -H "Accept: application/json" ^
-                              -d "{\\"componentId\\":\\"${componentId}\\",\\"componentType\\":\\"${componentType}\\",\\"packageVersion\\":\\"${packageVersion}\\",\\"notes\\":\\"${packageNotes}\\"}" ^
-                              "https://api.boomi.com/api/rest/v1/%BOOMI_ACCOUNT_ID%/PackagedComponent" ^
-                              -o package-response.json
-                            """
+@echo off
+
+curl --ssl-no-revoke --fail-with-body --max-time 120 -X POST ^
+  -u "%BOOMI_USERNAME%:%BOOMI_API_TOKEN%" ^
+  -H "Content-Type: application/json" ^
+  -H "Accept: application/json" ^
+  -d "{\\"componentId\\":\\"${componentId}\\",\\"componentType\\":\\"${componentType}\\",\\"packageVersion\\":\\"${packageVersion}\\",\\"notes\\":\\"${packageNotes}\\"}" ^
+  "https://api.boomi.com/api/rest/v1/%BOOMI_ACCOUNT_ID%/PackagedComponent" ^
+  -o package-response.json
+
+set CURL_EXIT=%ERRORLEVEL%
+
+echo ===== Package API Response for ${item.name} =====
+if exist package-response.json type package-response.json
+
+exit /b %CURL_EXIT%
+"""
                         }
 
                         def packageResponseText = readFile('package-response.json')
-                        echo packageResponseText
-
                         def packageResponse = readJSON text: packageResponseText
                         def packageId = packageResponse.packageId
 
@@ -59,20 +75,28 @@ pipeline {
                             string(credentialsId: 'BOOMI_API_TOKEN', variable: 'BOOMI_API_TOKEN')
                         ]) {
                             bat """
-                            curl --ssl-no-revoke --fail --max-time 120 -X POST ^
-                              -u "%BOOMI_USERNAME%:%BOOMI_API_TOKEN%" ^
-                              -H "Content-Type: application/json" ^
-                              -H "Accept: application/json" ^
-                              -d "{\\"packageId\\":\\"${packageId}\\",\\"environmentId\\":\\"${manifest.environmentId}\\",\\"notes\\":\\"${packageNotes}\\"}" ^
-                              "https://api.boomi.com/api/rest/v1/%BOOMI_ACCOUNT_ID%/DeployedPackage" ^
-                              -o deploy-response.json
-                            """
+@echo off
+
+curl --ssl-no-revoke --fail-with-body --max-time 120 -X POST ^
+  -u "%BOOMI_USERNAME%:%BOOMI_API_TOKEN%" ^
+  -H "Content-Type: application/json" ^
+  -H "Accept: application/json" ^
+  -d "{\\"packageId\\":\\"${packageId}\\",\\"environmentId\\":\\"${manifest.environmentId}\\",\\"notes\\":\\"${packageNotes}\\"}" ^
+  "https://api.boomi.com/api/rest/v1/%BOOMI_ACCOUNT_ID%/DeployedPackage" ^
+  -o deploy-response.json
+
+set CURL_EXIT=%ERRORLEVEL%
+
+echo ===== Deploy API Response for ${item.name} =====
+if exist deploy-response.json type deploy-response.json
+
+exit /b %CURL_EXIT%
+"""
                         }
 
                         def deployResponse = readFile('deploy-response.json')
-                        echo deployResponse
-
                         echo "Deployment completed for ${item.name}"
+                        echo deployResponse
                     }
                 }
             }
